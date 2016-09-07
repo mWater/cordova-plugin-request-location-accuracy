@@ -26,6 +26,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.Manifest;
 import android.util.Log;
 import android.os.Bundle;
 import android.app.Activity;
@@ -42,6 +43,8 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResult;
 import com.google.android.gms.location.LocationSettingsStatusCodes;
+
+import java.lang.reflect.Method;
 
 public class RequestLocationAccuracy extends CordovaPlugin implements
         GoogleApiClient.ConnectionCallbacks,
@@ -178,6 +181,8 @@ public class RequestLocationAccuracy extends CordovaPlugin implements
         try {
             if(action.equals("request")) {
                 result = request(args.getInt(0));
+            }else if(action.equals("canRequest")) {
+                result = canRequest();
             }else {
                 handleError("Invalid action", ERROR_INVALID_ACTION);
                 result = false;
@@ -223,6 +228,31 @@ public class RequestLocationAccuracy extends CordovaPlugin implements
         buildLocationSettingsRequest();
         checkLocationSettings();
         return true;
+    }
+
+    public boolean canRequest() throws Exception{
+        boolean _canRequest = isLocationAuthorized();
+        context.success(_canRequest ? 1 : 0);
+        return true;
+    }
+
+    private boolean isLocationAuthorized() throws Exception {
+        boolean authorized = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) || hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION);
+        Log.v(TAG, "Location permission is " + (authorized ? "authorized" : "unauthorized"));
+        return authorized;
+    }
+
+    private boolean hasPermission(String permission) throws Exception{
+        boolean hasPermission = true;
+        Method method = null;
+        try {
+            method = cordova.getClass().getMethod("hasPermission", permission.getClass());
+            Boolean bool = (Boolean) method.invoke(cordova, permission);
+            hasPermission = bool.booleanValue();
+        } catch (NoSuchMethodException e) {
+            Log.w(TAG, "Cordova v" + CordovaWebView.CORDOVA_VERSION + " does not support runtime permissions so defaulting to GRANTED for " + permission);
+        }
+        return hasPermission;
     }
 
     protected void handleError(String errorMsg, int errorCode){
@@ -406,6 +436,7 @@ public class RequestLocationAccuracy extends CordovaPlugin implements
     @Override
     public void onConnectionFailed(ConnectionResult result) {
         // https://developers.google.com/android/reference/com/google/android/gms/common/ConnectionResult
+        permanentError = result;
         String reason;
         switch (result.getErrorCode()){
             case ConnectionResult.API_UNAVAILABLE:
@@ -437,15 +468,12 @@ public class RequestLocationAccuracy extends CordovaPlugin implements
                 break;
             case ConnectionResult.SERVICE_DISABLED:
                 reason = "The installed version of Google Play services has been disabled on this device.";
-                permanentError = result;
                 break;
             case ConnectionResult.SERVICE_INVALID:
                 reason = "The version of the Google Play services installed on this device is not authentic.";
-                permanentError = result;
                 break;
             case ConnectionResult.SERVICE_MISSING:
                 reason = "Google Play services is missing on this device.";
-                permanentError = result;
                 break;
             case ConnectionResult.SERVICE_MISSING_PERMISSION:
                 reason = "Google Play service doesn't have one or more required permissions.";
@@ -470,5 +498,4 @@ public class RequestLocationAccuracy extends CordovaPlugin implements
         }
         handleError("Failed to connect to Google Play Services: ".concat(reason), ERROR_GOOGLE_API_CONNECTION_FAILED);
     }
-
 }
